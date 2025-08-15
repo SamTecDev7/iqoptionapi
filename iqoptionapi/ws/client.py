@@ -72,7 +72,8 @@ class WebsocketClient(object):
         """
         self.api = api
         self.wss = websocket.WebSocketApp(
-            self.api.wss_url, on_message=self.on_message,
+            self.api.wss_url,
+            on_message=lambda ws, msg: self.on_message(ws, msg),
             on_error=self.on_error, on_close=self.on_close,
             on_open=self.on_open)
 
