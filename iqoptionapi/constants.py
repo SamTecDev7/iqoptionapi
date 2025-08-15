@@ -1,6 +1,3 @@
-""
-"Module for IQ Option API constants."
-""
 ACTIVES = {
     "1.xhkg": 1827,
     "1000SATS": 2159,

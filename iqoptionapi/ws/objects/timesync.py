@@ -21,6 +21,10 @@ class TimeSync(Base):
 
         :returns: The server timestamp.
         """
+        while self.__server_timestamp==None:
+            time.sleep(0.2)
+            pass
+
         return self.__server_timestamp / 1000
 
     @server_timestamp.setter

@@ -5,9 +5,63 @@ import logging
 import websocket
 import iqoptionapi.constants as OP_code
 import iqoptionapi.global_value as global_value
+from threading import Thread
+from iqoptionapi.ws.received.technical_indicators import technical_indicators
+from iqoptionapi.ws.received.time_sync import time_sync
+from iqoptionapi.ws.received.heartbeat import heartbeat
+from iqoptionapi.ws.received.balances import balances
+from iqoptionapi.ws.received.profile import profile
+from iqoptionapi.ws.received.balance_changed import balance_changed
+from iqoptionapi.ws.received.candles import candles
+from iqoptionapi.ws.received.buy_complete import buy_complete
+from iqoptionapi.ws.received.option import option
+from iqoptionapi.ws.received.position_history import position_history
+from iqoptionapi.ws.received.list_info_data import list_info_data
+from iqoptionapi.ws.received.candle_generated import candle_generated_realtime
+from iqoptionapi.ws.received.candle_generated_v2 import candle_generated_v2
+from iqoptionapi.ws.received.commission_changed import commission_changed
+from iqoptionapi.ws.received.socket_option_opened import socket_option_opened
+from iqoptionapi.ws.received.api_option_init_all_result import api_option_init_all_result
+from iqoptionapi.ws.received.initialization_data import initialization_data
+from iqoptionapi.ws.received.underlying_list import underlying_list
+from iqoptionapi.ws.received.instruments import instruments
+from iqoptionapi.ws.received.financial_information import financial_information
+from iqoptionapi.ws.received.position_changed import position_changed
+from iqoptionapi.ws.received.option_opened import option_opened
+from iqoptionapi.ws.received.option_closed import option_closed
+from iqoptionapi.ws.received.top_assets_updated import top_assets_updated
+from iqoptionapi.ws.received.strike_list import strike_list
+from iqoptionapi.ws.received.api_game_betinfo_result import api_game_betinfo_result
+from iqoptionapi.ws.received.traders_mood_changed import traders_mood_changed
+from iqoptionapi.ws.received.order import order
+from iqoptionapi.ws.received.position import position
+from iqoptionapi.ws.received.positions import positions
+from iqoptionapi.ws.received.order_placed_temp import order_placed_temp
+from iqoptionapi.ws.received.deferred_orders import deferred_orders
+from iqoptionapi.ws.received.history_positions import history_positions
+from iqoptionapi.ws.received.available_leverages import available_leverages
+from iqoptionapi.ws.received.order_canceled import order_canceled
+from iqoptionapi.ws.received.position_closed import position_closed
+from iqoptionapi.ws.received.overnight_fee import overnight_fee
+from iqoptionapi.ws.received.api_game_getoptions_result import api_game_getoptions_result
+from iqoptionapi.ws.received.sold_options import sold_options
+from iqoptionapi.ws.received.tpsl_changed import tpsl_changed
+from iqoptionapi.ws.received.auto_margin_call_changed import auto_margin_call_changed
+from iqoptionapi.ws.received.digital_option_placed import digital_option_placed
+from iqoptionapi.ws.received.result import result
+from iqoptionapi.ws.received.instrument_quotes_generated import instrument_quotes_generated
+from iqoptionapi.ws.received.training_balance_reset import training_balance_reset
+from iqoptionapi.ws.received.socket_option_closed import socket_option_closed
+from iqoptionapi.ws.received.live_deal_binary_option_placed import live_deal_binary_option_placed
+from iqoptionapi.ws.received.live_deal_digital_option import live_deal_digital_option
+from iqoptionapi.ws.received.leaderboard_deals_client import leaderboard_deals_client
+from iqoptionapi.ws.received.live_deal import live_deal
+from iqoptionapi.ws.received.user_profile_client import user_profile_client
+from iqoptionapi.ws.received.leaderboard_userinfo_deals_client import leaderboard_userinfo_deals_client
+from iqoptionapi.ws.received.client_price_generated import client_price_generated
+from iqoptionapi.ws.received.users_availability import users_availability
 
 
-                
 class WebsocketClient(object):
     """Class for work with IQ option websocket."""
 
@@ -21,314 +75,116 @@ class WebsocketClient(object):
             self.api.wss_url, on_message=self.on_message,
             on_error=self.on_error, on_close=self.on_close,
             on_open=self.on_open)
-    def dict_queue_add(self,dict,maxdict,key1,key2,key3,value):
+
+    def dict_queue_add(self, dict, maxdict, key1, key2, key3, value):
         if key3 in dict[key1][key2]:
-                    dict[key1][key2][key3]=value
+            dict[key1][key2][key3] = value
         else:
             while True:
                 try:
-                    dic_size=len(dict[key1][key2])
+                    dic_size = len(dict[key1][key2])
                 except:
-                    dic_size=0
-                if dic_size<maxdict:
-                    dict[key1][key2][key3]=value
+                    dic_size = 0
+                if dic_size < maxdict:
+                    dict[key1][key2][key3] = value
                     break
                 else:
-                    #del mini key
-                    del dict[key1][key2][sorted(dict[key1][key2].keys(), reverse=False)[0]]   
-    def on_message(self, message): # pylint: disable=unused-argument
+                    # del mini key
+                    del dict[key1][key2][sorted(
+                        dict[key1][key2].keys(), reverse=False)[0]]
+
+    def api_dict_clean(self, obj):
+        if len(obj) > 5000:
+            for k in obj.keys():
+                del obj[k]
+                break
+
+    def on_message(self, wss, message):  # pylint: disable=unused-argument
         """Method to process websocket messages."""
-        global_value.ssl_Mutual_exclusion=True
+        global_value.ssl_Mutual_exclusion = True
         logger = logging.getLogger(__name__)
         logger.debug(message)
 
         message = json.loads(str(message))
 
-        if message["name"] == "timeSync":
-            self.api.timesync.server_timestamp = message["msg"]
-         #######################################################
-        #---------------------for_realtime_candle______________
-        #######################################################
-        elif message["name"] == "candle-generated":
-            Active_name=list(OP_code.ACTIVES.keys())[list(OP_code.ACTIVES.values()).index(message["msg"]["active_id"])]            
-            
-            active=str(Active_name)
-            size=int(message["msg"]["size"])
-            from_=int(message["msg"]["from"])
-            msg=message["msg"]
-            maxdict=self.api.real_time_candles_maxdict_table[Active_name][size]
 
-            self.dict_queue_add(self.api.real_time_candles,maxdict,active,size,from_,msg)
-            self.api.candle_generated_check[active][size]=True
-            
-        elif message["name"]=="options":
-            self.api.get_options_v2_data=message
-        elif message["name"] == "candles-generated":
-            Active_name=list(OP_code.ACTIVES.keys())[list(OP_code.ACTIVES.values()).index(message["msg"]["active_id"])] 
-            active=str(Active_name)      
-            for k,v in message["msg"]["candles"].items():
-                v["active_id"]=message["msg"]["active_id"]
-                v["at"]=message["msg"]["at"]
-                v["ask"]=message["msg"]["ask"]
-                v["bid"]=message["msg"]["bid"]
-                v["close"]=message["msg"]["value"]
-                v["size"]=int(k)
-                size=int(v["size"])
-                from_=int(v["from"])
-                maxdict=self.api.real_time_candles_maxdict_table[Active_name][size]
-                msg=v
-                self.dict_queue_add(self.api.real_time_candles,maxdict,active,size,from_,msg)
-            self.api.candle_generated_all_size_check[active]=True 
-        elif message["name"]=="commission-changed":
-            instrument_type=message["msg"]["instrument_type"]
-            active_id=message["msg"]["active_id"]
-            Active_name=list(OP_code.ACTIVES.keys())[list(OP_code.ACTIVES.values()).index(active_id)]            
-            commission=message["msg"]["commission"]["value"]
-            self.api.subscribe_commission_changed_data[instrument_type][Active_name][self.api.timesync.server_timestamp]=int(commission)
-            
-        #######################################################
-        #______________________________________________________
-        #######################################################
-        elif message["name"] =="heartbeat":
-            try:
-                self.api.heartbeat(message["msg"])
-            except:
-                pass
-        elif message["name"]=="balances":
-            self.api.balances_raw=message
-            
-        elif message["name"] == "profile":
-            #--------------all-------------
-            self.api.profile.msg=message["msg"]
-            if self.api.profile.msg!=False:
-                #---------------------------
-                try:
-                    self.api.profile.balance = message["msg"]["balance"]
-                except:
-                    pass
-                #Set Default account
-                if global_value.balance_id==None:
-                    for balance in message["msg"]["balances"]:
-                        if balance["type"]==4:
-                            global_value.balance_id=balance["id"]
-                            break
-                try:
-                    self.api.profile.balance_id=message["msg"]["balance_id"]
-                except:
-                    pass
-                
-                try:
-                    self.api.profile.balance_type=message["msg"]["balance_type"]
-                except:
-                    pass
+        technical_indicators(self.api, message, self.api_dict_clean)
+        time_sync(self.api, message)
+        heartbeat(self.api, message)
+        balances(self.api, message)
+        profile(self.api, message)
+        balance_changed(self.api, message)
+        candles(self.api, message)
+        buy_complete(self.api, message)
+        option(self.api, message)
+        position_history(self.api, message)
+        list_info_data(self.api, message)
+        candle_generated_realtime(self.api, message, self.dict_queue_add)
+        candle_generated_v2(self.api, message, self.dict_queue_add)
+        commission_changed(self.api, message)
+        socket_option_opened(self.api, message)
+        api_option_init_all_result(self.api, message)
+        initialization_data(self.api, message)
+        underlying_list(self.api, message)
+        instruments(self.api, message)
+        financial_information(self.api, message)
+        position_changed(self.api, message)
+        option_opened(self.api, message)
+        option_closed(self.api, message)
+        top_assets_updated(self.api, message)
+        strike_list(self.api, message)
+        api_game_betinfo_result(self.api, message)
+        traders_mood_changed(self.api, message)
+         # ------for forex&cfd&crypto..
+        order_placed_temp(self.api, message)
+        order(self.api, message)
+        position(self.api, message)
+        positions(self.api, message)
+        order_placed_temp(self.api, message)
+        deferred_orders(self.api, message)
+        history_positions(self.api, message)
+        available_leverages(self.api, message)
+        order_canceled(self.api, message)
+        position_closed(self.api, message)
+        overnight_fee(self.api, message)
+        api_game_getoptions_result(self.api, message)
+        sold_options(self.api, message)
+        tpsl_changed(self.api, message)
+        auto_margin_call_changed(self.api, message)
+        digital_option_placed(self.api, message, self.api_dict_clean)
+        result(self.api, message)
+        instrument_quotes_generated(self.api, message)
+        training_balance_reset(self.api, message)
+        socket_option_closed(self.api, message)
+        live_deal_binary_option_placed(self.api, message)
+        live_deal_digital_option(self.api, message)
+        leaderboard_deals_client(self.api, message)
+        live_deal(self.api, message)
+        user_profile_client(self.api, message)
+        leaderboard_userinfo_deals_client(self.api, message)
+        users_availability(self.api, message)
+        client_price_generated(self.api, message)
 
-                try:
-                    self.api.profile.balances=message["msg"]["balances"]
-                except:
-                    pass
+        global_value.ssl_Mutual_exclusion = False
 
-        elif message["name"] == "candles":
-            try:
-                self.api.candles.candles_data = message["msg"]["candles"]
-            except:
-                pass
-        #Make sure ""self.api.buySuccessful"" more stable
-        #check buySuccessful have two fail action
-        #if "user not authorized" we get buyV2_result !!!need to reconnect!!!
-        #elif "we have user authoget_balancerized" we get buyComplete
-        #I Suggest if you get selget_balancef.api.buy_successful==False you need to reconnect iqoption server
-        elif message["name"] == "buyComplete":
-            try:
-                self.api.buy_successful = message["msg"]["isSuccessful"]
-                self.api.buy_id= message["msg"]["result"]["id"]
-            except:
-                pass
-        elif message["name"] == "buyV2_result":
-            self.api.buy_successful = message["msg"]["isSuccessful"]
-        #*********************buyv3
-        #buy_multi_option
-        elif message["name"] == "option":
-            self.api.buy_multi_option[str(message["request_id"])] = message["msg"]
-        #**********************************************************   
-        elif message["name"] == "listInfoData":
-           for get_m in message["msg"]:
-               self.api.listinfodata.set(get_m["win"],get_m["game_state"],get_m["id"])
-        elif message["name"] == "socket-option-opened":
-            id=message["msg"]["id"]
-            self.api.socket_option_opened[id]=message
-             
-        elif message["name"] == "api_option_init_all_result":
-            self.api.api_option_init_all_result = message["msg"]
-        elif message["name"] == "initialization-data":
-            self.api.api_option_init_all_result_v2 = message["msg"]
-        elif message["name"] == "underlying-list":
-            self.api.underlying_list_data=message["msg"]
-        elif message["name"] == "instruments":
-            self.api.instruments=message["msg"]
-        elif message["name"]=="financial-information":
-            self.api.financial_information=message
-        elif message["name"]=="position-changed":
-            
-            if message["microserviceName"]=="portfolio" and (message["msg"]["source"]=="digital-options") or message["msg"]["source"]=="trading":
-                self.api.order_async[int(message["msg"]["raw_event"]["order_ids"][0])] [message["name"]]=message
-            elif message["microserviceName"]=="portfolio" and message["msg"]["source"]=="binary-options":
-                self.api.order_async[int(message["msg"]["external_id"])] [message["name"]]=message
-                #print(message)
-            
-        elif message["name"]=="option-opened":
-            self.api.order_async[int(message["msg"]["option_id"])][message["name"]]=message
-       
-        elif message["name"]=="option-closed":
-             
-            self.api.order_async[int(message["msg"]["option_id"])][message["name"]]=message
-        
-       
-        elif message["name"]=="top-assets-updated":
-            self.api.top_assets_updated_data[str(message["msg"]["instrument_type"])]=message["msg"]["data"]
-        elif message["name"]=="strike-list":  
-            self.api.strike_list=message
-        elif message["name"]=="api_game_betinfo_result":
-            try:
-                self.api.game_betinfo.isSuccessful=message["msg"]["isSuccessful"]
-                self.api.game_betinfo.dict=message["msg"]
-            except:
-                pass
-        elif message["name"]=="traders-mood-changed":
-            self.api.traders_mood[message["msg"]["asset_id"]]=message["msg"]["value"]
-        #------for forex&cfd&crypto..
-        elif message["name"]=="order-placed-temp":
-            self.api.buy_order_id= message["msg"]["id"]
-        elif message["name"]=="order":
-            self.api.order_data=message
-        elif message["name"]=="positions":
-            self.api.positions=message
-        elif message["name"]=="position":
-            self.api.position=message
-        elif message["name"]=="deferred-orders":
-            self.api.deferred_orders=message
-
-        elif message["name"]=="position-history":
-            self.api.position_history=message
-        elif message["name"]=="history-positions":
-            self.api.position_history_v2=message
-        elif message["name"]=="available-leverages":
-            self.api.available_leverages=message
-        elif message["name"]=="order-canceled":
-            self.api.order_canceled=message
-        elif message["name"]=="position-closed":
-            self.api.close_position_data=message
-        elif message["name"]=="overnight-fee":
-            self.api.overnight_fee=message
-        elif message["name"]=="api_game_getoptions_result":
-            self.api.api_game_getoptions_result=message
-        elif message["name"]=="sold-options":
-            self.api.sold_options_respond=message
-        elif message["name"]=="tpsl-changed":
-            self.api.tpsl_changed_respond=message
-        elif message["name"]=="position-changed":
-            self.api.position_changed=message
-        elif message["name"]=="auto-margin-call-changed":
-            self.api.auto_margin_call_changed_respond=message
-        elif message["name"]=="digital-option-placed":
-            try:
-                self.api.digital_option_placed_id=message["msg"]["id"]
-            except:
-                self.api.digital_option_placed_id=message["msg"]
-        elif message["name"]=="result":
-            self.api.result=message["msg"]["success"]
-        elif message["name"]=="instrument-quotes-generated":
-             
-            Active_name=list(OP_code.ACTIVES.keys())[list(OP_code.ACTIVES.values()).index(message["msg"]["active"])]  
-            period=message["msg"]["expiration"]["period"] 
-            ans={}
-            for data in message["msg"]["quotes"]:
-                #FROM IQ OPTION SOURCE CODE
-                #https://github.com/Lu-Yi-Hsun/Decompiler-IQ-Option/blob/master/Source%20Code/5.5.1/sources/com/iqoption/dto/entity/strike/Quote.java#L91
-                if data["price"]["ask"]==None:
-                    ProfitPercent=None
-                else:
-                    askPrice=(float)(data["price"]["ask"])
-                    ProfitPercent=((100-askPrice)*100)/askPrice
-                
-                for symble in data["symbols"]:
-                    try:
-                        """
-                        ID SAMPLE:doUSDJPY-OTC201811111204PT1MC11350481
-                        """
-
-                        """
-                        dict ID-prodit:{ID:profit}
-                        """
-
-                        ans[symble]=ProfitPercent
-                    except:
-                        pass
-            self.api.instrument_quites_generated_timestamp[Active_name][period]=message["msg"]["expiration"]["timestamp"]
-            self.api.instrument_quites_generated_data[Active_name][period]=ans
-
-            self.api.instrument_quotes_generated_raw_data[Active_name][period]=message
-        elif message["name"]=="training-balance-reset":
-            self.api.training_balance_reset_request=message["msg"]["isSuccessful"]
- 
-        elif message["name"]=="live-deal-binary-option-placed":
-            name=message["name"]
-            active_id=message["msg"]["active_id"]
-            active=list(OP_code.ACTIVES.keys())[list(OP_code.ACTIVES.values()).index(active_id)] 
-            _type=message["msg"]["option_type"]
-            try:
-                self.api.live_deal_data[name][active][_type].appendleft(message["msg"])
-            except:
-                pass
-        elif message["name"]=="live-deal-digital-option":
-            name=message["name"]
-            active_id=message["msg"]["instrument_active_id"]
-            active=list(OP_code.ACTIVES.keys())[list(OP_code.ACTIVES.values()).index(active_id)] 
-            _type=message["msg"]["expiration_type"]
-            try:
-                self.api.live_deal_data[name][active][_type].appendleft(message["msg"])
-            except:
-                pass
-
-        elif message["name"]=="leaderboard-deals-client":
-            self.api.leaderboard_deals_client=message["msg"]
-        elif message["name"]=="live-deal":
-            name=message["name"]
-            active_id=message["msg"]["instrument_active_id"]
-            active=list(OP_code.ACTIVES.keys())[list(OP_code.ACTIVES.values()).index(active_id)] 
-            _type=message["msg"]["instrument_type"]
-            try:
-                self.api.live_deal_data[name][active][_type].appendleft(message["msg"])
-            except:
-                pass
-
-
-        elif message["name"]=="user-profile-client":
-            self.api.user_profile_client=message["msg"]
-        elif message["name"]=="leaderboard-userinfo-deals-client":
-            self.api.leaderboard_userinfo_deals_client=message["msg"]
-        elif message["name"]=="users-availability":
-            self.api.users_availability=message["msg"]
-        else:
-            pass
-        global_value.ssl_Mutual_exclusion=False
-                
-    
     @staticmethod
-    def on_error(wss, error): # pylint: disable=unused-argument
+    def on_error(wss, error):  # pylint: disable=unused-argument
         """Method to process websocket errors."""
         logger = logging.getLogger(__name__)
         logger.error(error)
-        global_value.websocket_error_reason=str(error)
-        global_value.check_websocket_if_error=True
+        global_value.websocket_error_reason = str(error)
+        global_value.check_websocket_if_error = True
+
     @staticmethod
-    def on_open(wss): # pylint: disable=unused-argument
+    def on_open(wss):  # pylint: disable=unused-argument
         """Method to process websocket open."""
         logger = logging.getLogger(__name__)
         logger.debug("Websocket client connected.")
-        global_value.check_websocket_if_connect=1
+        global_value.check_websocket_if_connect = 1
+
     @staticmethod
-    def on_close(wss): # pylint: disable=unused-argument
+    def on_close(wss):  # pylint: disable=unused-argument
         """Method to process websocket close."""
         logger = logging.getLogger(__name__)
         logger.debug("Websocket connection closed.")
-        global_value.check_websocket_if_connect=0
+        global_value.check_websocket_if_connect = 0
